@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>발표 시간 관리</title>
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface2: #334155;
+  --accent: #3b82f6;
+  --danger: #ef4444;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* ── Header ── */
+.header {
+  background: var(--surface);
+  padding: 14px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--surface2);
+  position: sticky; top: 0; z-index: 100;
+}
+.app-title { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+.date-str  { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+.clock {
+  font-size: 2.8rem; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 2px;
+}
+
+/* ── Upload ── */
+.upload-wrap {
+  margin: 32px auto; max-width: 520px; padding: 0 20px;
+}
+.upload-box {
+  border: 2px dashed var(--surface2);
+  border-radius: 16px;
+  padding: 48px 32px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+}
+.upload-box:hover { border-color: var(--accent); background: rgba(59,130,246,.05); }
+.upload-box input { display: none; }
+.upload-icon { font-size: 3rem; margin-bottom: 14px; }
+.upload-title { font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; }
+.upload-hint  { font-size: 0.85rem; color: var(--muted); line-height: 1.6; }
+.upload-sample {
+  margin-top: 20px;
+  background: var(--surface2);
+  border: none; border-radius: 8px;
+  color: var(--text); padding: 10px 20px;
+  font-size: 0.9rem; cursor: pointer;
+  transition: opacity .2s;
+}
+.upload-sample:hover { opacity: .75; }
+
+/* ── Main content ── */
+.content { padding: 0 20px 32px; }
+
+/* ── Current card ── */
+.current-card {
+  background: var(--surface);
+  border-radius: 16px;
+  border: 2px solid var(--accent);
+  padding: 22px 24px;
+  margin-bottom: 20px;
+}
+.card-label {
+  font-size: 0.7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--accent); margin-bottom: 10px;
+}
+.card-title    { font-size: 1.7rem; font-weight: 700; margin-bottom: 4px; }
+.card-presenter{ font-size: 1rem; color: var(--muted); margin-bottom: 18px; }
+
+.timer-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.timer-box {
+  background: var(--bg);
+  border-radius: 12px; padding: 14px 18px;
+  text-align: center; flex: 1; min-width: 120px;
+}
+.timer-lbl { font-size: 0.72rem; color: var(--muted); margin-bottom: 4px; }
+.timer-val {
+  font-size: 2rem; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.ok   { color: var(--success); }
+.warn { color: var(--warning); }
+.over { color: var(--danger); }
+
+.diff-pill {
+  padding: 8px 16px; border-radius: 20px;
+  font-size: 1rem; font-weight: 600; white-space: nowrap;
+}
+.pill-late  { background: rgba(239,68,68,.15);  color: var(--danger);  }
+.pill-early { background: rgba(34,197,94,.15);  color: var(--success); }
+.pill-ok    { background: rgba(59,130,246,.15); color: var(--accent);  }
+
+.no-current {
+  color: var(--muted); text-align: center; padding: 10px 0;
+  font-size: 1rem;
+}
+
+/* ── Progress bar ── */
+.progress-wrap {
+  margin-top: 14px;
+  background: var(--bg);
+  border-radius: 8px; height: 10px; overflow: hidden;
+}
+.progress-bar {
+  height: 100%; border-radius: 8px;
+  transition: width .5s, background .5s;
+}
+
+/* ── Buttons ── */
+.btn {
+  padding: 10px 22px; border: none; border-radius: 10px;
+  font-size: 0.95rem; font-weight: 600;
+  cursor: pointer; transition: opacity .15s, transform .1s;
+  white-space: nowrap;
+}
+.btn:hover  { opacity: .82; transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn-start { background: var(--success); color: #fff; }
+.btn-end   { background: var(--danger);  color: #fff; }
+.btn-reset { background: var(--surface2); color: var(--muted); font-size: .85rem; padding: 8px 16px; }
+
+/* ── Schedule table ── */
+.sched-card {
+  background: var(--surface);
+  border-radius: 16px; overflow: hidden;
+}
+.sched-header {
+  padding: 16px 20px;
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid var(--surface2);
+}
+.sched-title { font-size: 1rem; font-weight: 600; }
+
+table { width: 100%; border-collapse: collapse; }
+thead tr { background: var(--surface2); }
+th {
+  padding: 11px 14px; text-align: left;
+  font-size: 0.72rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .5px; color: var(--muted);
+}
+td {
+  padding: 13px 14px;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  font-size: 0.92rem; vertical-align: middle;
+}
+tr.row-current { background: rgba(59,130,246,.08); }
+tr.row-done    { opacity: .55; }
+
+.dot {
+  display: inline-block;
+  width: 8px; height: 8px; border-radius: 50%;
+  margin-right: 8px; vertical-align: middle;
+}
+.dot-cur  { background: var(--warning); animation: pulse 1.4s infinite; }
+.dot-done { background: var(--success); }
+.dot-up   { background: var(--muted); }
+@keyframes pulse {
+  0%,100% { opacity:1; } 50% { opacity:.25; }
+}
+
+.badge {
+  display: inline-block; padding: 3px 10px;
+  border-radius: 20px; font-size: 0.78rem; font-weight: 600;
+}
+.badge-cur  { background: rgba(245,158,11,.15); color: var(--warning); }
+.badge-done-ok   { background: rgba(34,197,94,.15);  color: var(--success); }
+.badge-done-late { background: rgba(239,68,68,.15);  color: var(--danger);  }
+.badge-done-early{ background: rgba(59,130,246,.15); color: var(--accent);  }
+.badge-up   { background: rgba(148,163,184,.12); color: var(--muted); }
+
+.pname  { font-weight: 600; }
+.pname2 { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+
+/* ── Vertical time bar ── */
+.card-body {
+  display: flex;
+  gap: 20px;
+  align-items: stretch;
+}
+.card-main { flex: 1; min-width: 0; }
+
+.vbar-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 64px;
+  flex-shrink: 0;
+}
+.vbar-time-label {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.vbar-track {
+  flex: 1;
+  width: 44px;
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-height: 160px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+}
+.vbar-elapsed {
+  background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+  transition: height .6s cubic-bezier(.4,0,.2,1);
+  position: relative;
+  flex-shrink: 0;
+}
+.vbar-remaining {
+  background: linear-gradient(180deg, #16a34a 0%, #22c55e 100%);
+  flex: 1;
+  transition: all .6s cubic-bezier(.4,0,.2,1);
+}
+.vbar-over {
+  background: linear-gradient(180deg, #ef4444 0%, #dc2626 100%);
+  width: 100%; height: 100%;
+}
+/* divider line at current position */
+.vbar-divider {
+  position: absolute;
+  bottom: 0; left: -4px; right: -4px;
+  height: 3px;
+  background: #fff;
+  border-radius: 2px;
+  box-shadow: 0 0 6px rgba(255,255,255,.6);
+}
+.vbar-pct {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: rgba(255,255,255,.85);
+  pointer-events: none;
+}
+.vbar-overtime-badge {
+  font-size: 0.7rem;
+  background: rgba(239,68,68,.2);
+  color: var(--danger);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ── Page layout with sidebar ── */
+.page-layout { min-height: calc(100vh - 74px); }
+.page-left {
+  margin-right: 0;
+  transition: margin-right .3s;
+}
+.page-left.with-sidebar { margin-right: 200px; }
+
+.tl-sidebar {
+  position: fixed;
+  top: 74px;
+  right: 0;
+  width: 200px;
+  height: calc(100vh - 74px);
+  background: var(--surface);
+  border-left: 1px solid var(--surface2);
+  display: none;
+  flex-direction: column;
+  z-index: 50;
+}
+
+/* hide columns on narrow screens */
+@media(max-width:768px) {
+  .tl-sidebar { width: 150px; }
+  .page-left.with-sidebar { margin-right: 150px; }
+}
+@media(max-width:600px) {
+  .col-actual, .col-status { display: none; }
+  .clock { font-size: 2rem; }
+  .card-title { font-size: 1.3rem; }
+  .vbar-wrap { min-width: 48px; }
+  .vbar-track { width: 34px; }
+  .tl-sidebar { display: none !important; }
+  .page-left.with-sidebar { margin-right: 0; }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div>
+    <div class="app-title">발표 시간 관리</div>
+    <div class="date-str" id="dateStr"></div>
+  </div>
+  <div class="clock" id="clock">00:00:00</div>
+</div>
+
+<!-- Page layout: left content + right timeline sidebar -->
+<div class="page-layout">
+
+  <!-- Left: Upload + Main -->
+  <div class="page-left">
+
+    <!-- Upload Section -->
+    <div id="uploadSection" class="upload-wrap">
+      <div class="upload-box" onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" onchange="loadFile(event)">
+        <div class="upload-icon">📊</div>
+        <div class="upload-title">엑셀 파일 업로드</div>
+        <div class="upload-hint">
+          열 순서: <strong>발표명 | 발표자 | 예정시간(HH:MM) | 발표시간(분)</strong><br>
+          1행은 헤더로 자동 인식됩니다
+        </div>
+        <button class="upload-sample" onclick="event.stopPropagation(); loadSample()">
+          샘플 데이터로 시작하기
+        </button>
+      </div>
+    </div>
+
+    <!-- Main -->
+    <div id="mainContent" class="content" style="display:none">
+
+      <!-- Current Presentation -->
+      <div class="current-card">
+        <div class="card-label">현재 발표</div>
+        <div id="currentPane">
+          <div class="no-current">아래 목록에서 [시작] 버튼을 눌러 발표를 시작하세요</div>
+        </div>
+      </div>
+
+      <!-- Schedule Table -->
+      <div class="sched-card">
+        <div class="sched-header">
+          <div class="sched-title">전체 발표 일정</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="file" id="fileInputMain" accept=".xlsx,.xls,.csv" onchange="loadFile(event)" style="display:none">
+            <button class="btn" style="background:var(--accent);color:#fff;padding:8px 16px;font-size:.85rem"
+              onclick="document.getElementById('fileInputMain').click()">📂 엑셀 업로드</button>
+            <button class="btn btn-reset" onclick="downloadSample()">📥 샘플 다운로드</button>
+            <button class="btn btn-reset" onclick="resetAll()">초기화</button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:32px">#</th>
+              <th>발표명 / 발표자</th>
+              <th>예정 시간</th>
+              <th class="col-actual">실제 시작</th>
+              <th class="col-status">상태</th>
+              <th style="width:90px">관리</th>
+            </tr>
+          </thead>
+          <tbody id="schedBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /page-left -->
+
+  <!-- Right: Full timeline sidebar -->
+  <div class="tl-sidebar" id="tlSidebar">
+    <div style="padding:14px 12px 10px;border-bottom:1px solid var(--surface2);flex-shrink:0">
+      <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent)">전체 일정</div>
+      <div id="tlRemaining" style="font-size:.78rem;color:var(--muted);margin-top:3px"></div>
+    </div>
+    <div style="flex:1;padding:10px 10px 10px 6px;display:flex;gap:6px;min-height:0;overflow:hidden">
+      <!-- Time labels -->
+      <div id="tlLabels" style="position:relative;width:34px;flex-shrink:0;font-size:.6rem;font-variant-numeric:tabular-nums;color:var(--muted)"></div>
+      <!-- Bar -->
+      <div style="flex:1;position:relative">
+        <div id="tlBar" style="position:absolute;inset:0;border-radius:10px;overflow:hidden"></div>
+        <div id="tlNowLine" style="display:none;position:absolute;left:-4px;right:-4px;height:3px;background:#fff;border-radius:2px;box-shadow:0 0 8px rgba(255,255,255,.7);z-index:10;pointer-events:none"></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page-layout -->
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────
+let items = [];      // { name, presenter, scheduledTime, duration, actualStart, actualEnd, status }
+let curIdx = -1;
+
+// ── Clock ──────────────────────────────────────────────────────────────
+function tick() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  document.getElementById('clock').textContent =
+    `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  const days = ['일','월','화','수','목','금','토'];
+  document.getElementById('dateStr').textContent =
+    `${now.getFullYear()}년 ${now.getMonth()+1}월 ${now.getDate()}일 (${days[now.getDay()]})`;
+  renderCurrentPane();
+  renderTable();
+  renderTimeline();
+}
+setInterval(tick, 1000);
+tick();
+
+// ── Time helpers ────────────────────────────────────────────────────────
+function parseHHMM(str) {
+  if (!str) return null;
+  if (typeof str === 'number') {
+    // Excel stores time as fraction of day
+    const mins = Math.round(str * 1440);
+    str = `${String(Math.floor(mins/60)).padStart(2,'0')}:${String(mins%60).padStart(2,'0')}`;
+  }
+  const [h,m] = String(str).split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+function fmtTime(d) {
+  if (!d) return '-';
+  const p = n => String(n).padStart(2,'0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+function fmtElapsed(ms) {
+  const s = Math.floor(Math.abs(ms) / 1000);
+  return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+}
+function fmtDiff(ms) {
+  const s = Math.round(Math.abs(ms) / 1000);
+  const m = Math.floor(s / 60), sec = s % 60;
+  return m > 0 ? `${m}분 ${sec}초` : `${sec}초`;
+}
+
+// ── File loading ────────────────────────────────────────────────────────
+function loadFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    const wb = XLSX.read(new Uint8Array(ev.target.result), { type: 'array' });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+    // skip header if first cell looks like text header
+    const start = (rows.length > 0 && typeof rows[0][0] === 'string' && isNaN(rows[0][3])) ? 1 : 0;
+    items = rows.slice(start)
+      .filter(r => r[0])
+      .map((r, i) => ({
+        id: i,
+        name: String(r[0] || ''),
+        presenter: String(r[1] || ''),
+        scheduledTime: r[2],        // raw value
+        scheduledTimeStr: (() => {
+          if (!r[2]) return '';
+          if (typeof r[2] === 'number') {
+            const mins = Math.round(r[2]*1440);
+            return `${String(Math.floor(mins/60)).padStart(2,'0')}:${String(mins%60).padStart(2,'0')}`;
+          }
+          return String(r[2]);
+        })(),
+        duration: parseInt(r[3]) || 0,
+        actualStart: null, actualEnd: null,
+        status: 'upcoming'
+      }));
+    showMain();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function loadSample() {
+  items = [
+    { id:0, name:'개회사',             presenter:'사회자',  scheduledTimeStr:'09:00', duration:5,  actualStart:null,actualEnd:null,status:'upcoming'},
+    { id:1, name:'기조발표 - AI 트렌드', presenter:'김철수', scheduledTimeStr:'09:05', duration:20, actualStart:null,actualEnd:null,status:'upcoming'},
+    { id:2, name:'발표1 - 머신러닝 기초',presenter:'이영희', scheduledTimeStr:'09:25', duration:15, actualStart:null,actualEnd:null,status:'upcoming'},
+    { id:3, name:'발표2 - 딥러닝 응용', presenter:'박민준', scheduledTimeStr:'09:40', duration:15, actualStart:null,actualEnd:null,status:'upcoming'},
+    { id:4, name:'휴식',               presenter:'-',      scheduledTimeStr:'09:55', duration:10, actualStart:null,actualEnd:null,status:'upcoming'},
+    { id:5, name:'발표3 - 자연어처리',  presenter:'최수진', scheduledTimeStr:'10:05', duration:20, actualStart:null,actualEnd:null,status:'upcoming'},
+    { id:6, name:'발표4 - 컴퓨터비전', presenter:'정다은', scheduledTimeStr:'10:25', duration:20, actualStart:null,actualEnd:null,status:'upcoming'},
+    { id:7, name:'발표5 - 강화학습',   presenter:'한지호', scheduledTimeStr:'10:45', duration:15, actualStart:null,actualEnd:null,status:'upcoming'},
+    { id:8, name:'종합토론',            presenter:'전체',   scheduledTimeStr:'11:00', duration:30, actualStart:null,actualEnd:null,status:'upcoming'},
+    { id:9, name:'폐회식',             presenter:'사회자', scheduledTimeStr:'11:30', duration:10, actualStart:null,actualEnd:null,status:'upcoming'},
+  ];
+  showMain();
+}
+
+function downloadSample() {
+  const wb = XLSX.utils.book_new();
+  const data = [
+    ['발표명', '발표자', '예정시간', '발표시간(분)'],
+    ['개회사', '사회자', '09:00', 5],
+    ['기조발표 - AI 트렌드', '김철수', '09:05', 20],
+    ['발표1 - 머신러닝 기초', '이영희', '09:25', 15],
+    ['발표2 - 딥러닝 응용', '박민준', '09:40', 15],
+    ['휴식', '-', '09:55', 10],
+    ['발표3 - 자연어처리', '최수진', '10:05', 20],
+    ['발표4 - 컴퓨터비전', '정다은', '10:25', 20],
+    ['발표5 - 강화학습', '한지호', '10:45', 15],
+    ['종합토론', '전체', '11:00', 30],
+    ['폐회식', '사회자', '11:30', 10],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  // Column widths
+  ws['!cols'] = [{ wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, ws, '발표일정');
+  XLSX.writeFile(wb, '발표일정_샘플.xlsx');
+}
+
+function showMain() {
+  document.getElementById('uploadSection').style.display = 'none';
+  document.getElementById('mainContent').style.display = 'block';
+  document.getElementById('tlSidebar').style.display = 'flex';
+  document.querySelector('.page-left').classList.add('with-sidebar');
+  curIdx = -1;
+  renderCurrentPane();
+  renderTable();
+  renderTimeline();
+}
+
+function reloadFile() {
+  document.getElementById('uploadSection').style.display = 'block';
+  document.getElementById('mainContent').style.display = 'none';
+  document.getElementById('tlSidebar').style.display = 'none';
+  document.querySelector('.page-left').classList.remove('with-sidebar');
+  document.getElementById('fileInput').value = '';
+}
+
+// ── Actions ─────────────────────────────────────────────────────────────
+function startPresentation(idx) {
+  // end any in-progress
+  const inProg = items.find(p => p.status === 'in-progress');
+  if (inProg) { inProg.actualEnd = new Date(); inProg.status = 'done'; }
+
+  items[idx].actualStart = new Date();
+  items[idx].status = 'in-progress';
+  curIdx = idx;
+}
+
+function endPresentation(idx) {
+  items[idx].actualEnd = new Date();
+  items[idx].status = 'done';
+  if (curIdx === idx) curIdx = -1;
+}
+
+function resetAll() {
+  if (!confirm('모든 발표 기록을 초기화하시겠습니까?')) return;
+  items.forEach(p => { p.actualStart = null; p.actualEnd = null; p.status = 'upcoming'; });
+  curIdx = -1;
+}
+
+// ── Render current pane ──────────────────────────────────────────────────
+function renderCurrentPane() {
+  const pane = document.getElementById('currentPane');
+  const p = (curIdx >= 0 && items[curIdx]?.status === 'in-progress') ? items[curIdx] : null;
+
+  if (!p) {
+    pane.innerHTML = '<div class="no-current">아래 목록에서 [시작] 버튼을 눌러 발표를 시작하세요</div>';
+    return;
+  }
+
+  const now = Date.now();
+  const elapsed = now - p.actualStart.getTime();
+  const scheduledMs = p.duration * 60000;
+  const remaining = scheduledMs - elapsed;
+  const isOver = remaining < 0;
+  const pct = Math.min(100, (elapsed / scheduledMs) * 100);
+
+  const elapsedCls = isOver ? 'over' : elapsed > scheduledMs * 0.85 ? 'warn' : 'ok';
+  const remCls = isOver ? 'over' : '';
+
+  // Start diff
+  const sched = parseHHMM(p.scheduledTimeStr);
+  let diffHtml = '';
+  if (sched) {
+    const d = p.actualStart.getTime() - sched.getTime();
+    if (Math.abs(d) < 30000)
+      diffHtml = `<span class="diff-pill pill-ok">정시 시작</span>`;
+    else if (d > 0)
+      diffHtml = `<span class="diff-pill pill-late">${fmtDiff(d)} 늦게 시작</span>`;
+    else
+      diffHtml = `<span class="diff-pill pill-early">${fmtDiff(d)} 일찍 시작</span>`;
+  }
+
+  const endTime = sched ? new Date(sched.getTime() + scheduledMs) : null;
+
+  // Vertical bar
+  const elapsedPct = Math.min(100, pct);
+  let vbarInner;
+  if (isOver) {
+    const overSec = Math.round(Math.abs(remaining) / 1000);
+    const overMin = Math.floor(overSec / 60), overS = overSec % 60;
+    vbarInner = `
+      <div class="vbar-over"></div>
+      <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%)">
+        <div class="vbar-overtime-badge">+${overMin}:${String(overS).padStart(2,'0')}</div>
+      </div>`;
+  } else {
+    vbarInner = `
+      <div class="vbar-elapsed" style="height:${elapsedPct}%">
+        ${elapsedPct > 15 ? `<div class="vbar-pct">${Math.round(elapsedPct)}%</div>` : ''}
+        <div class="vbar-divider"></div>
+      </div>
+      <div class="vbar-remaining"></div>`;
+  }
+
+  pane.innerHTML = `
+    <div class="card-title">${p.name}</div>
+    <div class="card-presenter">발표자: ${p.presenter}&nbsp;&nbsp;|&nbsp;&nbsp;예정: ${p.scheduledTimeStr} (${p.duration}분)</div>
+    <div class="card-body">
+      <div class="card-main">
+        <div class="timer-row">
+          <div class="timer-box">
+            <div class="timer-lbl">경과 시간</div>
+            <div class="timer-val ${elapsedCls}">${fmtElapsed(elapsed)}</div>
+          </div>
+          <div class="timer-box">
+            <div class="timer-lbl">${isOver ? '⚠ 초과 시간' : '남은 시간'}</div>
+            <div class="timer-val ${remCls}">${fmtElapsed(remaining)}</div>
+          </div>
+          <div class="timer-box">
+            <div class="timer-lbl">예정 종료</div>
+            <div class="timer-val">${endTime ? fmtTime(endTime) : '-'}</div>
+          </div>
+          ${diffHtml}
+          <button class="btn btn-end" onclick="endPresentation(${curIdx})">발표 종료</button>
+        </div>
+      </div>
+      <div class="vbar-wrap">
+        <div class="vbar-time-label">${p.scheduledTimeStr || '-'}</div>
+        <div class="vbar-track" style="position:relative">${vbarInner}</div>
+        <div class="vbar-time-label">${endTime ? (String(endTime.getHours()).padStart(2,'0')+':'+String(endTime.getMinutes()).padStart(2,'0')) : '-'}</div>
+        ${isOver ? '' : `<div style="font-size:.7rem;color:var(--muted)">남은 ${Math.ceil(remaining/60000)}분</div>`}
+      </div>
+    </div>`;
+}
+
+// ── Render full timeline sidebar ─────────────────────────────────────────
+function renderTimeline() {
+  const sidebar = document.getElementById('tlSidebar');
+  if (!sidebar || sidebar.style.display === 'none' || items.length === 0) return;
+
+  const totalStart = parseHHMM(items[0].scheduledTimeStr);
+  const lastItem = items[items.length - 1];
+  const lastSched = parseHHMM(lastItem.scheduledTimeStr);
+  if (!totalStart || !lastSched) return;
+
+  const totalEnd = new Date(lastSched.getTime() + lastItem.duration * 60000);
+  const totalMs = totalEnd - totalStart;
+  const now = new Date();
+  const nowMs = Math.max(0, Math.min(totalMs, now - totalStart));
+  const elapsedPct = (nowMs / totalMs) * 100;
+
+  // Build per-segment info
+  const segs = items.map(p => {
+    const start = parseHHMM(p.scheduledTimeStr);
+    const startPct = start ? ((start - totalStart) / totalMs) * 100 : 0;
+    const heightPct = (p.duration * 60000 / totalMs) * 100;
+    return { ...p, startPct, heightPct };
+  });
+
+  // ── Bar: gradient red→green split at elapsedPct ──
+  const bar = document.getElementById('tlBar');
+  bar.style.background = `linear-gradient(to bottom,
+    #dc2626 0%, #ef4444 ${elapsedPct}%,
+    #16a34a ${elapsedPct}%, #22c55e 100%)`;
+
+  // Segment dividers + name labels inside the bar
+  bar.innerHTML = segs.map((s, i) => {
+    const isCur = s.status === 'in-progress';
+    const nameColor = isCur ? '#fcd34d' : 'rgba(255,255,255,0.80)';
+    const fontWeight = isCur ? '700' : '500';
+    const divider = i > 0
+      ? `<div style="position:absolute;top:0;left:0;right:0;height:1px;background:rgba(255,255,255,.22)"></div>`
+      : '';
+    // pulsing dot for current
+    const dot = isCur
+      ? `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#fcd34d;margin-right:4px;animation:pulse 1.4s infinite;vertical-align:middle"></span>`
+      : '';
+    return `
+      <div style="position:absolute;top:${s.startPct}%;left:0;right:0;height:${s.heightPct}%;overflow:hidden;">
+        ${divider}
+        <div style="padding:3px 5px;display:flex;align-items:center;height:100%;overflow:hidden;">
+          ${dot}<span style="font-size:.62rem;color:${nameColor};font-weight:${fontWeight};
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;">${s.name}</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  // ── Current time indicator line ──
+  const nowLine = document.getElementById('tlNowLine');
+  if (elapsedPct > 0 && elapsedPct < 100) {
+    nowLine.style.display = 'block';
+    nowLine.style.top = elapsedPct + '%';
+  } else {
+    nowLine.style.display = 'none';
+  }
+
+  // ── Time labels on the left ──
+  const labelsEl = document.getElementById('tlLabels');
+  // Show label for each segment start + final end
+  const labelItems = [
+    ...segs.map(s => ({ pct: s.startPct, time: s.scheduledTimeStr })),
+    { pct: 100, time: `${String(totalEnd.getHours()).padStart(2,'0')}:${String(totalEnd.getMinutes()).padStart(2,'0')}` }
+  ];
+  // Filter labels that are too close together (< 5%)
+  const filtered = labelItems.filter((l, i) => {
+    if (i === 0 || i === labelItems.length - 1) return true;
+    return (l.pct - labelItems[i-1].pct) >= 7;
+  });
+  labelsEl.innerHTML = filtered.map(l =>
+    `<div style="position:absolute;top:${l.pct}%;transform:translateY(-50%);right:2px;white-space:nowrap;">${l.time}</div>`
+  ).join('');
+
+  // ── Remaining time in header ──
+  const remMs = Math.max(0, totalMs - nowMs);
+  const remMin = Math.ceil(remMs / 60000);
+  const remEl = document.getElementById('tlRemaining');
+  if (remMs <= 0) {
+    remEl.textContent = '일정 완료';
+    remEl.style.color = 'var(--success)';
+  } else {
+    remEl.textContent = `남은 ${remMin}분`;
+    remEl.style.color = 'var(--muted)';
+  }
+}
+
+// ── Render table ─────────────────────────────────────────────────────────
+function renderTable() {
+  const tbody = document.getElementById('schedBody');
+  if (!tbody) return;
+
+  // Calculate cumulative delay from done items
+  let cumulativeDelay = 0;
+  const doneItems = items.filter(p => p.status === 'done' && p.actualStart);
+  if (doneItems.length) {
+    const last = doneItems[doneItems.length - 1];
+    const lastSched = parseHHMM(last.scheduledTimeStr);
+    if (lastSched) cumulativeDelay = last.actualStart.getTime() - lastSched.getTime();
+  }
+
+  tbody.innerHTML = items.map((p, i) => {
+    const sched = parseHHMM(p.scheduledTimeStr);
+    const schedEnd = sched ? new Date(sched.getTime() + p.duration * 60000) : null;
+
+    let rowCls = '', dotCls = 'dot-up', badgeHtml = '', actionHtml = '';
+
+    if (p.status === 'in-progress') {
+      rowCls = 'row-current';
+      dotCls = 'dot-cur';
+      badgeHtml = '<span class="badge badge-cur">진행 중</span>';
+      actionHtml = `<button class="btn btn-end" style="padding:7px 14px;font-size:.82rem" onclick="endPresentation(${i})">종료</button>`;
+
+    } else if (p.status === 'done') {
+      rowCls = 'row-done';
+      dotCls = 'dot-done';
+      if (p.actualStart && sched) {
+        const d = p.actualStart.getTime() - sched.getTime();
+        const dm = Math.round(d / 60000);
+        if (Math.abs(dm) <= 1)
+          badgeHtml = '<span class="badge badge-done-ok">정시 완료</span>';
+        else if (dm > 0)
+          badgeHtml = `<span class="badge badge-done-late">${dm}분 지연</span>`;
+        else
+          badgeHtml = `<span class="badge badge-done-early">${-dm}분 단축</span>`;
+      } else {
+        badgeHtml = '<span class="badge badge-done-ok">완료</span>';
+      }
+      actionHtml = '<span style="color:var(--muted);font-size:.8rem">완료</span>';
+
+    } else {
+      badgeHtml = '<span class="badge badge-up">대기</span>';
+      actionHtml = `<button class="btn btn-start" style="padding:7px 14px;font-size:.82rem" onclick="startPresentation(${i})">시작</button>`;
+    }
+
+    // Predicted start for upcoming (based on cumulative delay)
+    let schedStr = p.scheduledTimeStr ? `${p.scheduledTimeStr}` : '-';
+    if (p.duration) schedStr += ` (${p.duration}분)`;
+
+    // If upcoming and there's a delay, show predicted time in muted text
+    let predictedHtml = '';
+    if (p.status === 'upcoming' && sched && Math.abs(cumulativeDelay) > 60000) {
+      const predicted = new Date(sched.getTime() + cumulativeDelay);
+      const ph = String(predicted.getHours()).padStart(2,'0');
+      const pm = String(predicted.getMinutes()).padStart(2,'0');
+      const sign = cumulativeDelay > 0 ? '+' : '-';
+      const dm = Math.round(Math.abs(cumulativeDelay)/60000);
+      predictedHtml = `<div style="font-size:.75rem;color:${cumulativeDelay>0?'var(--danger)':'var(--success)'};margin-top:2px">예상 ${ph}:${pm} (${sign}${dm}분)</div>`;
+    }
+
+    return `
+      <tr class="${rowCls}">
+        <td><span class="dot ${dotCls}"></span>${i+1}</td>
+        <td>
+          <div class="pname">${p.name}</div>
+          <div class="pname2">${p.presenter}</div>
+        </td>
+        <td>${schedStr}${predictedHtml}</td>
+        <td class="col-actual">${p.actualStart ? fmtTime(p.actualStart) : '-'}</td>
+        <td class="col-status">${badgeHtml}</td>
+        <td>${actionHtml}</td>
+      </tr>`;
+  }).join('');
+}
+</script>
+</body>
+</html>

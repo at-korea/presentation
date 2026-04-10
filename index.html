@@ -288,33 +288,38 @@ tr.row-done    { opacity: .55; }
   z-index: 50;
 }
 
-/* ── Drag handle ── */
-.drag-handle {
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 5px;
+/* ── Drag handle (fixed, outside sidebar) ── */
+#resizeHandle {
+  position: fixed;
+  top: 74px;
+  height: calc(100vh - 74px);
+  width: 16px;          /* 넓은 grab zone */
   cursor: col-resize;
-  z-index: 52;
-  background: transparent;
-  transition: background .15s;
+  z-index: 200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transform: translateX(-50%);  /* 경계선 중앙 정렬 */
 }
-.drag-handle::after {
+#resizeHandle::before {         /* 시각적 선 */
   content: '';
-  position: absolute;
-  left: 2px; top: 50%;
-  transform: translateY(-50%);
-  width: 1px; height: 40px;
+  width: 3px; height: 48px;
+  border-radius: 3px;
   background: var(--surface2);
-  border-radius: 2px;
-  transition: background .15s, height .15s;
+  transition: background .15s, height .15s, width .15s;
 }
-.drag-handle:hover::after,
-.drag-handle.dragging::after {
+#resizeHandle:hover::before,
+#resizeHandle.dragging::before {
   background: var(--accent);
-  height: 64px;
+  height: 72px; width: 4px;
 }
-.drag-handle:hover,
-.drag-handle.dragging { background: rgba(59,130,246,.08); }
+/* 드래그 중 전체화면 캡처 오버레이 */
+#dragOverlay {
+  display: none;
+  position: fixed; inset: 0;
+  z-index: 199;
+  cursor: col-resize;
+}
 
 /* ── Sidebar typography ── */
 .tl-hdr-title {
@@ -422,8 +427,6 @@ tr.row-done    { opacity: .55; }
 
   <!-- Right: Full timeline sidebar -->
   <div class="tl-sidebar" id="tlSidebar">
-    <!-- Drag handle -->
-    <div class="drag-handle" id="dragHandle"></div>
 
     <!-- Header -->
     <div style="padding:14px 16px 12px;border-bottom:1px solid var(--surface2);flex-shrink:0">
@@ -445,6 +448,11 @@ tr.row-done    { opacity: .55; }
 
 </div><!-- /page-layout -->
 
+<!-- 사이드바 경계 핸들 (sidebar 외부, fixed) -->
+<div id="resizeHandle"></div>
+<!-- 드래그 중 마우스 캡처 오버레이 -->
+<div id="dragOverlay"></div>
+
 <script>
 // ── State ──────────────────────────────────────────────────────────────
 let items = [];      // { name, presenter, scheduledTime, duration, actualStart, actualEnd, status }
@@ -453,55 +461,47 @@ let sidebarWidth = 200;
 const SIDEBAR_MIN = 140, SIDEBAR_MAX = 480;
 
 // ── Sidebar drag resize ─────────────────────────────────────────────────
-function initDrag() {
-  const handle = document.getElementById('dragHandle');
-  if (!handle) return;
+const resizeHandle  = document.getElementById('resizeHandle');
+const dragOverlay   = document.getElementById('dragOverlay');
 
-  function applyWidth(w) {
-    sidebarWidth = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, w));
-    document.getElementById('tlSidebar').style.width = sidebarWidth + 'px';
-    const left = document.querySelector('.page-left');
-    if (left && left.classList.contains('with-sidebar'))
-      left.style.marginRight = sidebarWidth + 'px';
+function applyWidth(w) {
+  sidebarWidth = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, w));
+  const sidebar = document.getElementById('tlSidebar');
+  const left    = document.querySelector('.page-left');
+  sidebar.style.width = sidebarWidth + 'px';
+  if (left && left.classList.contains('with-sidebar'))
+    left.style.marginRight = sidebarWidth + 'px';
+  // 핸들 위치: 화면 오른쪽에서 sidebarWidth 만큼 안쪽
+  resizeHandle.style.right = (sidebarWidth - 1) + 'px';
+}
+
+function startResize(clientX) {
+  const startX = clientX, startW = sidebarWidth;
+  resizeHandle.classList.add('dragging');
+  dragOverlay.style.display = 'block';   // 전체화면 캡처
+
+  function onMove(cx) { applyWidth(startW + (startX - cx)); }
+
+  function onMouseMove(e) { onMove(e.clientX); }
+  function onTouchMove(e) { e.preventDefault(); onMove(e.touches[0].clientX); }
+
+  function stop() {
+    resizeHandle.classList.remove('dragging');
+    dragOverlay.style.display = 'none';
+    document.removeEventListener('mousemove', onMouseMove);
+    document.removeEventListener('mouseup',   stop);
+    document.removeEventListener('touchmove', onTouchMove);
+    document.removeEventListener('touchend',  stop);
   }
 
-  // Mouse
-  handle.addEventListener('mousedown', e => {
-    e.preventDefault();
-    const startX = e.clientX, startW = sidebarWidth;
-    handle.classList.add('dragging');
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    const onMove = e => applyWidth(startW + (startX - e.clientX));
-    const onUp = () => {
-      handle.classList.remove('dragging');
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  });
-
-  // Touch
-  handle.addEventListener('touchstart', e => {
-    e.preventDefault();
-    const startX = e.touches[0].clientX, startW = sidebarWidth;
-    handle.classList.add('dragging');
-
-    const onMove = e => applyWidth(startW + (startX - e.touches[0].clientX));
-    const onEnd = () => {
-      handle.classList.remove('dragging');
-      document.removeEventListener('touchmove', onMove);
-      document.removeEventListener('touchend', onEnd);
-    };
-    document.addEventListener('touchmove', onMove, { passive: false });
-    document.addEventListener('touchend', onEnd);
-  }, { passive: false });
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseup',   stop);
+  document.addEventListener('touchmove', onTouchMove, { passive: false });
+  document.addEventListener('touchend',  stop);
 }
-initDrag();
+
+resizeHandle.addEventListener('mousedown',  e => { e.preventDefault(); startResize(e.clientX); });
+resizeHandle.addEventListener('touchstart', e => { e.preventDefault(); startResize(e.touches[0].clientX); }, { passive: false });
 
 // ── Clock ──────────────────────────────────────────────────────────────
 function tick() {
@@ -624,6 +624,8 @@ function showMain() {
   document.getElementById('mainContent').style.display = 'block';
   document.getElementById('tlSidebar').style.display = 'flex';
   document.querySelector('.page-left').classList.add('with-sidebar');
+  applyWidth(sidebarWidth);              // 핸들 위치 초기화
+  resizeHandle.style.display = 'flex';
   curIdx = -1;
   renderCurrentPane();
   renderTable();
@@ -634,6 +636,7 @@ function reloadFile() {
   document.getElementById('uploadSection').style.display = 'block';
   document.getElementById('mainContent').style.display = 'none';
   document.getElementById('tlSidebar').style.display = 'none';
+  resizeHandle.style.display = 'none';
   document.querySelector('.page-left').classList.remove('with-sidebar');
   document.getElementById('fileInput').value = '';
 }

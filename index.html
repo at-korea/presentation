@@ -273,16 +273,12 @@ tr.row-done    { opacity: .55; }
 
 /* ── Page layout with sidebar ── */
 .page-layout { min-height: calc(100vh - 74px); }
-.page-left {
-  margin-right: 0;
-  transition: margin-right .3s;
-}
+.page-left { margin-right: 0; }
 .page-left.with-sidebar { margin-right: 200px; }
 
 .tl-sidebar {
   position: fixed;
-  top: 74px;
-  right: 0;
+  top: 74px; right: 0;
   width: 200px;
   height: calc(100vh - 74px);
   background: var(--surface);
@@ -292,11 +288,53 @@ tr.row-done    { opacity: .55; }
   z-index: 50;
 }
 
-/* hide columns on narrow screens */
-@media(max-width:768px) {
-  .tl-sidebar { width: 150px; }
-  .page-left.with-sidebar { margin-right: 150px; }
+/* ── Drag handle ── */
+.drag-handle {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 52;
+  background: transparent;
+  transition: background .15s;
 }
+.drag-handle::after {
+  content: '';
+  position: absolute;
+  left: 2px; top: 50%;
+  transform: translateY(-50%);
+  width: 1px; height: 40px;
+  background: var(--surface2);
+  border-radius: 2px;
+  transition: background .15s, height .15s;
+}
+.drag-handle:hover::after,
+.drag-handle.dragging::after {
+  background: var(--accent);
+  height: 64px;
+}
+.drag-handle:hover,
+.drag-handle.dragging { background: rgba(59,130,246,.08); }
+
+/* ── Sidebar typography ── */
+.tl-hdr-title {
+  font-size: .8rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1px;
+  color: var(--accent);
+}
+.tl-hdr-remain {
+  font-size: .88rem; font-weight: 600;
+  color: var(--text); margin-top: 4px;
+}
+.tl-time-lbl {
+  font-size: .68rem;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  line-height: 1;
+}
+
+/* hide on narrow screens */
 @media(max-width:600px) {
   .col-actual, .col-status { display: none; }
   .clock { font-size: 2rem; }
@@ -384,17 +422,23 @@ tr.row-done    { opacity: .55; }
 
   <!-- Right: Full timeline sidebar -->
   <div class="tl-sidebar" id="tlSidebar">
-    <div style="padding:14px 12px 10px;border-bottom:1px solid var(--surface2);flex-shrink:0">
-      <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--accent)">전체 일정</div>
-      <div id="tlRemaining" style="font-size:.78rem;color:var(--muted);margin-top:3px"></div>
+    <!-- Drag handle -->
+    <div class="drag-handle" id="dragHandle"></div>
+
+    <!-- Header -->
+    <div style="padding:14px 16px 12px;border-bottom:1px solid var(--surface2);flex-shrink:0">
+      <div class="tl-hdr-title">전체 일정</div>
+      <div id="tlRemaining" class="tl-hdr-remain"></div>
     </div>
-    <div style="flex:1;padding:10px 10px 10px 6px;display:flex;gap:6px;min-height:0;overflow:hidden">
+
+    <!-- Bar area -->
+    <div style="flex:1;padding:12px 12px 12px 8px;display:flex;gap:8px;min-height:0;overflow:hidden">
       <!-- Time labels -->
-      <div id="tlLabels" style="position:relative;width:34px;flex-shrink:0;font-size:.6rem;font-variant-numeric:tabular-nums;color:var(--muted)"></div>
-      <!-- Bar -->
+      <div id="tlLabels" style="position:relative;width:38px;flex-shrink:0"></div>
+      <!-- Bar + now-line -->
       <div style="flex:1;position:relative">
         <div id="tlBar" style="position:absolute;inset:0;border-radius:10px;overflow:hidden"></div>
-        <div id="tlNowLine" style="display:none;position:absolute;left:-4px;right:-4px;height:3px;background:#fff;border-radius:2px;box-shadow:0 0 8px rgba(255,255,255,.7);z-index:10;pointer-events:none"></div>
+        <div id="tlNowLine" style="display:none;position:absolute;left:-6px;right:-6px;height:3px;background:#fff;border-radius:2px;box-shadow:0 0 10px rgba(255,255,255,.8);z-index:10;pointer-events:none"></div>
       </div>
     </div>
   </div>
@@ -405,6 +449,59 @@ tr.row-done    { opacity: .55; }
 // ── State ──────────────────────────────────────────────────────────────
 let items = [];      // { name, presenter, scheduledTime, duration, actualStart, actualEnd, status }
 let curIdx = -1;
+let sidebarWidth = 200;
+const SIDEBAR_MIN = 140, SIDEBAR_MAX = 480;
+
+// ── Sidebar drag resize ─────────────────────────────────────────────────
+function initDrag() {
+  const handle = document.getElementById('dragHandle');
+  if (!handle) return;
+
+  function applyWidth(w) {
+    sidebarWidth = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, w));
+    document.getElementById('tlSidebar').style.width = sidebarWidth + 'px';
+    const left = document.querySelector('.page-left');
+    if (left && left.classList.contains('with-sidebar'))
+      left.style.marginRight = sidebarWidth + 'px';
+  }
+
+  // Mouse
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    const startX = e.clientX, startW = sidebarWidth;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMove = e => applyWidth(startW + (startX - e.clientX));
+    const onUp = () => {
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  // Touch
+  handle.addEventListener('touchstart', e => {
+    e.preventDefault();
+    const startX = e.touches[0].clientX, startW = sidebarWidth;
+    handle.classList.add('dragging');
+
+    const onMove = e => applyWidth(startW + (startX - e.touches[0].clientX));
+    const onEnd = () => {
+      handle.classList.remove('dragging');
+      document.removeEventListener('touchmove', onMove);
+      document.removeEventListener('touchend', onEnd);
+    };
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('touchend', onEnd);
+  }, { passive: false });
+}
+initDrag();
 
 // ── Clock ──────────────────────────────────────────────────────────────
 function tick() {
@@ -683,21 +780,21 @@ function renderTimeline() {
   // Segment dividers + name labels inside the bar
   bar.innerHTML = segs.map((s, i) => {
     const isCur = s.status === 'in-progress';
-    const nameColor = isCur ? '#fcd34d' : 'rgba(255,255,255,0.80)';
+    const isDone = s.status === 'done';
+    const nameColor = isCur ? '#fde68a' : isDone ? 'rgba(255,255,255,.55)' : 'rgba(255,255,255,.92)';
     const fontWeight = isCur ? '700' : '500';
     const divider = i > 0
-      ? `<div style="position:absolute;top:0;left:0;right:0;height:1px;background:rgba(255,255,255,.22)"></div>`
+      ? `<div style="position:absolute;top:0;left:0;right:0;height:1px;background:rgba(255,255,255,.25)"></div>`
       : '';
-    // pulsing dot for current
     const dot = isCur
-      ? `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#fcd34d;margin-right:4px;animation:pulse 1.4s infinite;vertical-align:middle"></span>`
+      ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#fde68a;margin-right:5px;flex-shrink:0;animation:pulse 1.4s infinite;"></span>`
       : '';
     return `
       <div style="position:absolute;top:${s.startPct}%;left:0;right:0;height:${s.heightPct}%;overflow:hidden;">
         ${divider}
-        <div style="padding:3px 5px;display:flex;align-items:center;height:100%;overflow:hidden;">
-          ${dot}<span style="font-size:.62rem;color:${nameColor};font-weight:${fontWeight};
-            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2;">${s.name}</span>
+        <div style="padding:3px 7px;display:flex;align-items:center;height:100%;overflow:hidden;gap:0">
+          ${dot}<span style="font-size:.72rem;color:${nameColor};font-weight:${fontWeight};
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;letter-spacing:-.01em;">${s.name}</span>
         </div>
       </div>`;
   }).join('');
@@ -713,18 +810,18 @@ function renderTimeline() {
 
   // ── Time labels on the left ──
   const labelsEl = document.getElementById('tlLabels');
-  // Show label for each segment start + final end
+  const endHHMM = `${String(totalEnd.getHours()).padStart(2,'0')}:${String(totalEnd.getMinutes()).padStart(2,'0')}`;
   const labelItems = [
     ...segs.map(s => ({ pct: s.startPct, time: s.scheduledTimeStr })),
-    { pct: 100, time: `${String(totalEnd.getHours()).padStart(2,'0')}:${String(totalEnd.getMinutes()).padStart(2,'0')}` }
+    { pct: 100, time: endHHMM }
   ];
-  // Filter labels that are too close together (< 5%)
+  // Filter labels too close together
   const filtered = labelItems.filter((l, i) => {
     if (i === 0 || i === labelItems.length - 1) return true;
     return (l.pct - labelItems[i-1].pct) >= 7;
   });
   labelsEl.innerHTML = filtered.map(l =>
-    `<div style="position:absolute;top:${l.pct}%;transform:translateY(-50%);right:2px;white-space:nowrap;">${l.time}</div>`
+    `<div class="tl-time-lbl" style="position:absolute;top:${l.pct}%;transform:translateY(-50%);right:0;white-space:nowrap;">${l.time}</div>`
   ).join('');
 
   // ── Remaining time in header ──
@@ -732,11 +829,12 @@ function renderTimeline() {
   const remMin = Math.ceil(remMs / 60000);
   const remEl = document.getElementById('tlRemaining');
   if (remMs <= 0) {
-    remEl.textContent = '일정 완료';
+    remEl.textContent = '일정 완료 ✓';
     remEl.style.color = 'var(--success)';
   } else {
-    remEl.textContent = `남은 ${remMin}분`;
-    remEl.style.color = 'var(--muted)';
+    const h = Math.floor(remMin / 60), m = remMin % 60;
+    remEl.textContent = h > 0 ? `남은 ${h}시간 ${m}분` : `남은 ${remMin}분`;
+    remEl.style.color = remMin <= 10 ? 'var(--danger)' : 'var(--text)';
   }
 }
 
